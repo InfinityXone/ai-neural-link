@@ -1,6 +1,0 @@
-{
-  "actor": "finsynapse",
-  "goal": "scan_yields",
-  "constraints": { "rate_limit_per_min": 10 },
-  "budget": { "requests": 50, "usd": 0 }
-}

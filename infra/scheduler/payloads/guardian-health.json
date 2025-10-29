@@ -1,6 +1,0 @@
-{
-  "actor": "guardian",
-  "goal": "system_health_check",
-  "constraints": { "sla_p95_ms": 800 },
-  "budget": { "requests": 10 }
-}
