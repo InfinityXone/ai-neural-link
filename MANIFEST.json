@@ -1,0 +1,17 @@
+{
+  "name": "Infinity Swarm",
+  "entrypoints": {
+    "orchestrators": {
+      "meta": "orchestrators/meta/agent_orchestrator.py",
+      "hive": "orchestrators/hive/hive_orchestrator.py",
+      "shell": "orchestrators/shell/orchestrator.py",
+      "langgraph_router": "core/agent0"
+    },
+    "agents": ["echo","prompt_writer","guardian","picky_bot","finsynapse","vision_ai","a_minus","agent_zero"]
+  },
+  "memory_gateway": {
+    "hydrate": "/memory/hydrate",
+    "dehydrate": "/memory/dehydrate",
+    "seed": "memory/core_brain/Etherverse_Core_AI.json"
+  }
+}
