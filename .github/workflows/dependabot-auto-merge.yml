@@ -1,0 +1,27 @@
+name: Dependabot Auto-Merge
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  check_suite:
+    types: [completed]
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for checks
+        uses: hmarr/await-checks@v3
+        with:
+          accept: success
+          timeout: 20m
+      - name: Merge when safe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=${{ github.event.pull_request.number }}
+          gh pr merge $PR --auto --squash || echo 'merge gated'
