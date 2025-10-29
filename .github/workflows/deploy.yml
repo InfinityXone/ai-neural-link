@@ -1,14 +1,15 @@
-name: Sovereign Deploy (ai-neural-link)
+name: Sovereign Deploy (Elite Agents)
 on:
   push: { branches: [ "main" ] }
   workflow_dispatch:
 permissions:
   contents: read
   id-token: write
-  packages: read
 env:
-  PROJECT_ID: ${{ vars.CIQ_PROJECT_ID }}
-  REGION: ${{ vars.CIQ_REGION }}
+  PROJECT_ID: ${PROJECT_ID}
+  REGION: ${REGION}
+  REG_HOST: ${REG_HOST}
+  AR_NAME: ${AR_NAME}
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -16,35 +17,54 @@ jobs:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/${{ env.PROJECT_ID }}/locations/global/workloadIdentityPools/github-pool/providers/github-oidc
-          service_account: gha-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+          workload_identity_provider: projects/\${{ env.PROJECT_ID }}/locations/global/workloadIdentityPools/github-pool/providers/github-oidc
+          service_account: gha-deployer@\${{ env.PROJECT_ID }}.iam.gserviceaccount.com
           token_format: access_token
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Configure & Ensure AR
+      - name: Ensure Artifact Registry
         run: |
-          gcloud config set project "$PROJECT_ID"
-          gcloud config set run/region "$REGION"
-          gcloud services enable artifactregistry.googleapis.com
-          gcloud artifacts repositories describe ciq --location=us >/dev/null 2>&1 || \
-            gcloud artifacts repositories create ciq --repository-format=Docker --location=us
-      - name: Build & Deploy services
+          gcloud artifacts repositories describe "\${AR_NAME}" --location "\${REGION}" --project "\${PROJECT_ID}" || \
+          gcloud artifacts repositories create "\${AR_NAME}" --repository-format=DOCKER --location "\${REGION}" --project "\${PROJECT_ID}"
+      - name: Build & Deploy services/*
         run: |
-          set -euo pipefail
-          SERVICES=(api orchestrator workers/headless ops/health_shim)
+          set -e
           : > images.txt
-          for S in "${SERVICES[@]}"; do
-            NAME="$(basename "$S" | tr '/' '-')"
-            [ -f "$S/Dockerfile" ] || continue
-            IMG="us-docker.pkg.dev/${PROJECT_ID}/ciq/${NAME}:$(git rev-parse --short HEAD)"
-            gcloud builds submit "$S" --tag "$IMG"
-            echo "$NAME=$IMG" >> images.txt
+          for d in services/*; do
+            [ -d "\$d" ] || continue
+            name="$(basename "\$d")"
+            img="\${REG_HOST}/\${PROJECT_ID}/\${AR_NAME}/\${name}:latest"
+            gcloud builds submit "\$d" --tag "\$img" --project "\${PROJECT_ID}"
+            echo "\$name=\$img" >> images.txt
           done
           while IFS='=' read -r SVC IMG; do
-            [ -z "$SVC" ] && continue
-            gcloud run deploy "$SVC" --image "$IMG" --region "$REGION" \
-              --service-account "run-ciq@${PROJECT_ID}.iam.gserviceaccount.com" \
-              --port 8080 --allow-unauthenticated=false --quiet
-            gcloud run services update-traffic "$SVC" --region "$REGION" --to-latest --quiet || true
-            URL="$(gcloud run services describe "$SVC" --region "$REGION" --format='value(status.url)')"
-            [ -n "$URL" ] && curl -fsS -m 6 "$URL/health" >/dev/null 2>&1 || true
+            [ -z "\$SVC" ] && continue
+            # orchestrator and every agent are Cloud Run services:
+            gcloud run deploy "\$SVC" --image "\$IMG" --region "\${REGION}" --project "\${PROJECT_ID}" \
+              --service-account "run-ciq@\${PROJECT_ID}.iam.gserviceaccount.com" \
+              --port 8080 --min-instances 1 --max-instances 2 --no-allow-unauthenticated --quiet
+            gcloud run services update-traffic "\$SVC" --region "\${REGION}" --project "\${PROJECT_ID}" --to-latest --quiet || true
           done < images.txt
+      - name: Build & schedule Autopilot Job
+        run: |
+          img="\${REG_HOST}/\${PROJECT_ID}/\${AR_NAME}/autopilot-job:latest"
+          gcloud builds submit ops/autopilot --tag "\$img" --project "\${PROJECT_ID}"
+          gcloud beta run jobs describe ciq-autopilot --region "\${REGION}" --project "\${PROJECT_ID}" >/dev/null 2>&1 && \
+            gcloud beta run jobs update ciq-autopilot --image "\$img" --service-account "run-ciq@\${PROJECT_ID}.iam.gserviceaccount.com" --region "\${REGION}" --project "\${PROJECT_ID}" || \
+            gcloud beta run jobs create ciq-autopilot --image "\$img" --service-account "run-ciq@\${PROJECT_ID}.iam.gserviceaccount.com" --region "\${REGION}" --project "\${PROJECT_ID}"
+          gcloud scheduler jobs describe ciq-autopilot --location "\${REGION}" >/dev/null 2>&1 || \
+            gcloud scheduler jobs create http ciq-autopilot --location "\${REGION}" --http-method POST \
+              --uri "https://run.googleapis.com/apis/run.googleapis.com/v1/namespaces/\${PROJECT_ID}/jobs/ciq-autopilot:run" \
+              --oauth-service-account-email "scheduler-autopilot@\${PROJECT_ID}.iam.gserviceaccount.com" \
+              --schedule "*/10 * * * *" --attempt-deadline "60s"
+      - name: Warm /health (Scheduler OIDC)
+        run: |
+          warm () { s="$1"; u="$(gcloud run services describe "$s" --region "\${REGION}" --project "\${PROJECT_ID}" --format='value(status.url)' || true)"; [ -n "\$u" ] || return 0;
+            ( gcloud scheduler jobs describe "warm-\$s" --location "\${REGION}" >/dev/null 2>&1 && \
+              gcloud scheduler jobs update http "warm-\$s" --location "\${REGION}" --http-method GET --uri "\$u/health" \
+                --oidc-service-account-email "scheduler-autopilot@\${PROJECT_ID}.iam.gserviceaccount.com" \
+                --oidc-token-audience "\$u" --schedule "*/5 * * * *" --max-retry-attempts 3 --attempt-deadline "30s" ) || \
+            gcloud scheduler jobs create http "warm-\$s" --location "\${REGION}" --http-method GET --uri "\$u/health" \
+              --oidc-service-account-email "scheduler-autopilot@\${PROJECT_ID}.iam.gserviceaccount.com" \
+              --oidc-token-audience "\$u" --schedule "*/5 * * * *" --max-retry-attempts 3 --attempt-deadline "30s"
+          }
+          for s in $(ls services); do warm "$s"; done
