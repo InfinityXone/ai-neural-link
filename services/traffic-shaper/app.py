@@ -1,12 +1,11 @@
-import os, logging, time, json
-from fastapi import FastAPI, Body
-from pythonjsonlogger import jsonlogger
-app=FastAPI(title="traffic-shaper")
-h=logging.StreamHandler(); h.setFormatter(jsonlogger.JsonFormatter())
-log=logging.getLogger("traffic-shaper"); log.addHandler(h); log.setLevel(logging.INFO)
+from fastapi import FastAPI
+import os
+PORT = int(os.getenv("PORT","8080"))
+app = FastAPI()
+
 @app.get("/health")
-def health(): return {"ok": True, "service": "traffic-shaper", "port": int(os.environ.get("PORT","8080"))}
+def health(): return {"ok": True}
+
+# Minimal contract endpoints (expand per-service)
 @app.post("/run")
-def run(payload: dict = Body(default={})):
-    ts=int(time.time()); log.info({"event":"run","service":"traffic-shaper","ts":ts,"payload":payload})
-    return {"ok": True, "service":"traffic-shaper","ts":ts}
+def run(): return {"status": "accepted"}

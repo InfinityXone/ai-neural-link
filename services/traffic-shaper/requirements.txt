@@ -1,4 +1,4 @@
 fastapi
-uvicorn
-requests
-python-json-logger
+uvicorn[standard]
+httpx
+pydantic
