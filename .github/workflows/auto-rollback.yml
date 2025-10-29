@@ -1,0 +1,28 @@
+name: auto-rollback
+on:
+  workflow_run:
+    workflows: ['ci-cd']
+    types: [completed]
+  schedule:
+    - cron: '*/30 * * * *'
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  rollback-if-bad:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Auth to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: gha-deployer@infinity-x-one-swarm-system.iam.gserviceaccount.com
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+      - name: Auto rollback via script (reads /metrics, picks last-good)
+        run: bash scripts/auto_rollback.sh
+        env:
+          PROJECT_ID: infinity-x-one-swarm-system
+          REGION: us-east1
+          ORCHESTRATOR_URL: https://orchestrator-938446344277.us-east1.run.app

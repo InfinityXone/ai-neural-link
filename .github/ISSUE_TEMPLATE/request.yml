@@ -1,0 +1,13 @@
+name: request-template
+description: Track an autonomous request/task for the swarm
+title: '[REQ] <short title>'
+labels: [request]
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: What do you want the swarm to do?
+      description: This will be forwarded to the orchestrator as a task goal.
+      placeholder: e.g., 'Spin up a proposal run for ICP X with $50 budget'
+    validations:
+      required: true
