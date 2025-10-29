@@ -1,7 +1,0 @@
-name: FinSynapse
-role: profit_engine
-entry: agents/finsynapse/finsynapse_worker.py
-inputs:
-  - market_signal
-outputs:
-  - action

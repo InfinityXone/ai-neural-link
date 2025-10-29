@@ -1,7 +1,0 @@
-name: Echo
-role: memory_log_and_reflection
-entry: agents/echo/echo_worker.py
-inputs:
-  - directive
-outputs:
-  - completion_log

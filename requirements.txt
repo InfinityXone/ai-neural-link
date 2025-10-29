@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+requests
+google-cloud-storage
+google-cloud-secret-manager
+SQLAlchemy
+pg8000

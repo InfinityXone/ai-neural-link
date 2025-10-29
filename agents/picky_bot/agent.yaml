@@ -1,7 +1,0 @@
-name: PickyBot
-role: quality_gate
-entry: agents/picky_bot/pickybot_worker.py
-inputs:
-  - plan
-outputs:
-  - score
