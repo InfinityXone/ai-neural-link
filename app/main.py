@@ -1,9 +1,8 @@
 from fastapi import FastAPI, Request
-import os, time
+import time
+from app.routes.db_health import router as db_router
 
 app = FastAPI()
-
-# in-memory directive queue for demo
 DIRECTIVES = []
 
 @app.get('/health')
@@ -17,10 +16,11 @@ async def handshake(req: Request):
 
 @app.get('/directive')
 def directive(agent: str = 'Echo'):
-    # return last directive or noop
     return DIRECTIVES[-1] if DIRECTIVES else {'command': 'noop'}
 
 @app.post('/complete')
 async def complete(req: Request):
     body = await req.json()
     return {'status': 'logged', 'received': body}
+
+app.include_router(db_router)

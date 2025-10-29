@@ -1,0 +1,32 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ai-neural-link
+  annotations:
+    run.googleapis.com/cloudsql-instances: ${PROJECT_ID}:${REGION}:${INSTANCE}
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      serviceAccountName: ai-neural-link@${PROJECT_ID}.iam.gserviceaccount.com
+      containers:
+        - image: ${REGION}-docker.pkg.dev/${PROJECT_ID}/docker/ai-neural-link:${IMAGE_TAG}
+          env:
+            - name: MEMORY_GATEWAY_URL
+              valueFrom:
+                secretKeyRef: { name: MEMORY_GATEWAY_URL, key: latest }
+            - name: MEMORY_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef: { name: MEMORY_GATEWAY_TOKEN, key: latest }
+            - name: MEMORY_SEED_GCS_URI
+              valueFrom:
+                secretKeyRef: { name: MEMORY_SEED_GCS_URI, key: latest }
+            - name: DB_SOCKET
+              valueFrom:
+                secretKeyRef: { name: DB_SOCKET, key: latest }
+          ports:
+            - name: http1
+              containerPort: 8080
