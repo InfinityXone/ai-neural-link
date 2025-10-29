@@ -1,0 +1,50 @@
+name: Sovereign Deploy (ai-neural-link)
+on:
+  push: { branches: [ "main" ] }
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+  packages: read
+env:
+  PROJECT_ID: ${{ vars.CIQ_PROJECT_ID }}
+  REGION: ${{ vars.CIQ_REGION }}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/${{ env.PROJECT_ID }}/locations/global/workloadIdentityPools/github-pool/providers/github-oidc
+          service_account: gha-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+          token_format: access_token
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure & Ensure AR
+        run: |
+          gcloud config set project "$PROJECT_ID"
+          gcloud config set run/region "$REGION"
+          gcloud services enable artifactregistry.googleapis.com
+          gcloud artifacts repositories describe ciq --location=us >/dev/null 2>&1 || \
+            gcloud artifacts repositories create ciq --repository-format=Docker --location=us
+      - name: Build & Deploy services
+        run: |
+          set -euo pipefail
+          SERVICES=(api orchestrator workers/headless ops/health_shim)
+          : > images.txt
+          for S in "${SERVICES[@]}"; do
+            NAME="$(basename "$S" | tr '/' '-')"
+            [ -f "$S/Dockerfile" ] || continue
+            IMG="us-docker.pkg.dev/${PROJECT_ID}/ciq/${NAME}:$(git rev-parse --short HEAD)"
+            gcloud builds submit "$S" --tag "$IMG"
+            echo "$NAME=$IMG" >> images.txt
+          done
+          while IFS='=' read -r SVC IMG; do
+            [ -z "$SVC" ] && continue
+            gcloud run deploy "$SVC" --image "$IMG" --region "$REGION" \
+              --service-account "run-ciq@${PROJECT_ID}.iam.gserviceaccount.com" \
+              --port 8080 --allow-unauthenticated=false --quiet
+            gcloud run services update-traffic "$SVC" --region "$REGION" --to-latest --quiet || true
+            URL="$(gcloud run services describe "$SVC" --region "$REGION" --format='value(status.url)')"
+            [ -n "$URL" ] && curl -fsS -m 6 "$URL/health" >/dev/null 2>&1 || true
+          done < images.txt
