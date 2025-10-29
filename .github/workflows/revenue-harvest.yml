@@ -1,0 +1,27 @@
+name: revenue-harvest
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+permissions: 
+  id-token: write
+  contents: read
+
+jobs:
+  harvest:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Auth (ID token for /harvest)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${ secrets.GCP_WIF_PROVIDER }
+          service_account: gha-deployer@infinity-x-one-swarm-system.iam.gserviceaccount.com
+          token_format: 'id_token'
+          audience: 'https://ai-gateway-938446344277.us-east1.run.app/api/harvest'
+      - name: Nudge proposals / outreach
+        env:
+          IDP_TOKEN: ${ steps.auth.outputs.id_token }
+        run: |
+          echo '{"actor":"revenue-bot","goal":"proposal_nudges","budget":{"max_usd":1.00}}' > /tmp/payload.json
+          curl -sS -H "Authorization: Bearer $IDP_TOKEN" -H "Content-Type: application/json" -d @/tmp/payload.json https://ai-gateway-938446344277.us-east1.run.app/api/harvest
