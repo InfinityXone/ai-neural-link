@@ -15,7 +15,7 @@ jobs:
       REGION: us-east1
       SERVICES: ai-gateway orchestrator memory-gateway
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
