@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "daily" }
+    groups:
+      gha-minor-patch:
+        applies-to: version-updates
+        update-types: [ "minor", "patch" ]
+
+  - package-ecosystem: "pip"
+    directory: "/services"
+    schedule: { interval: "daily" }
+    allow: [{ dependency-type: "direct" }]
+    groups:
+      py-minor-patch:
+        applies-to: version-updates
+        update-types: [ "minor", "patch" ]
+
+  - package-ecosystem: "docker"
+    directory: "/services"
+    schedule: { interval: "daily" }
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types: [ "minor", "patch" ]
