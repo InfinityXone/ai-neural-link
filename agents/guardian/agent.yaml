@@ -1,0 +1,7 @@
+name: Guardian
+role: policy_enforcement_and_killswitch
+entry: agents/guardian/guardian_worker.py
+inputs:
+  - plan
+outputs:
+  - decision

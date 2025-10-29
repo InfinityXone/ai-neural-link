@@ -1,0 +1,7 @@
+name: PromptWriter
+role: plan_and_prompt_fabrication
+entry: agents/prompt_writer/promptwriter_worker.py
+inputs:
+  - objective
+outputs:
+  - prompt_spec

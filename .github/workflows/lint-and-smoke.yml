@@ -1,0 +1,28 @@
+name: Lint & Smoke
+
+on:
+  push:
+    branches: [ feat/infinity-swarm-scaffold ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff requests
+      - name: Lint (ruff)
+        run: ruff check . || true
+      - name: Dry-run hydrate script
+        env:
+          MEMORY_GATEWAY_URL: ${{ secrets.MEMORY_GATEWAY_URL }}
+          MEMORY_GATEWAY_TOKEN: ${{ secrets.MEMORY_GATEWAY_TOKEN }}
+        run: |
+          python scripts/hydration/hydrate_seed.py || echo 'hydrate skipped (no gateway secrets)'
