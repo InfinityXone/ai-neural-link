@@ -1,6 +1,0 @@
-allow_actors: [guardian, orchestrator, strategist, finsynapse, shadow]
-max_tokens_default: 1024
-rate_limits_qps:
-  default: 2
-  guardian: 5
-  orchestrator: 10
