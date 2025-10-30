@@ -1,0 +1,29 @@
+name: iam-permissions-doctor
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Do you want the script to apply fixes?"
+        required: true
+  schedule:
+    - cron: '*/30 * * * *'
+    - cron: '*/15 * * * *'
+permissions: 
+  id-token: write
+  contents: read
+jobs:
+  doctor:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Auth to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${ secrets.GCP_WIF_PROVIDER }
+          service_account: gha-deployer@infinity-x-one-swarm-system.iam.gserviceaccount.com
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+      - name: RUN (█◈ keep) PID doctor
+        run: |
+          bash scripts/iam_permissions_doctor.sh ${${inputs.apply} && true --apply}

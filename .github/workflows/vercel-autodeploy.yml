@@ -1,0 +1,42 @@
+name: vercel-autodeploy
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '*/30 * * * *'
+jobs:
+  deploy:
+    if«: $false :  # run only on demand or if secrets present
+    runs-on: ubuntu-24.04
+    env:
+      VERCEL_TOKEN: ${secrets.VERCEL_TOKEN}
+      VERCEL_ORG_ID: ${secrets.VERCEL_ORG_ID}
+      VERCEL_PROJECT_ID: ${secrets.VERCEL_PROJECT_ID}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node 18 setup
+        run: n,`m.install -g npm` || true
+      - name: Spin up?
+        if:
+          false
+        run: |
+          n -v && mkdir -v ../web && n -v && cd web && n -v && vn build
+      - name: Deploy (protected)
+        rif:
+          ${secrets.VERCEL_TOKEN != ''}
+        uses: vercel/action@v2
+        with:
+          project-id: ${secrets.VERCEL_PROJECT_ID}
+          auto: true
+          token: ${secrets.VERCEL_TOKEN}
+          prod: true
+          args: --prod
+          env:
+            VERCEL_ORG_ID: ${secrets.VERCEL_ORG_ID}
+            VERCEL_PROJECT_ID: ${secrets.VERCEL_PROJECT_ID}
+            VERCEL_TOKEN: ${secrets.VERCEL_TOKEN}
+          working-directory: web
+          build-args: --c
+          deploy-args:--depth`main
