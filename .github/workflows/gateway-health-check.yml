@@ -1,0 +1,46 @@
+name: Gateway health check (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      gateway_url:
+        description: 'Cloud Run gateway URL (https://...a.run.app)'
+        required: true
+      caller_sa:
+        description: 'GCP caller SA email (must have roles/run.invoker on the service)'
+        required: true
+      project_id:
+        description: 'GCP project id'
+        required: true
+      region:
+        description: 'GCP region'
+        default: 'us-east1'
+        required: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          create_credentials_file: true
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ github.event.inputs.caller_sa }}
+          project_id: ${{ github.event.inputs.project_id }}
+
+      - name: Mint identity token for Cloud Run (audience=gateway URL)
+        id: idtok
+        run: |
+          echo "AUD=${{ github.event.inputs.gateway_url }}" >> $GITHUB_ENV
+          TOKEN=$(gcloud auth print-identity-token --audiences=${{ github.event.inputs.gateway_url }})
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: /health
+        run: |
+          curl -fsS -H "Authorization: Bearer ${{ steps.idtok.outputs.token }}" "${{ github.event.inputs.gateway_url }}/health"
+
+      - name: /route ping
+        run: |
+          curl -fsS -H "Authorization: Bearer ${{ steps.idtok.outputs.token }}" -H 'Content-Type: application/json' \
+            -d '{"actor":"system","goal":"ping","constraints":{},"budget":{"tokens":500}}' \
+            "${{ github.event.inputs.gateway_url }}/route"
