@@ -1,0 +1,64 @@
+name: deploy-on-main
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+# Minimal perms; bump if you need releases, environments, etc.
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # (Optional) language/tooling – add node/python as needed
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Google OIDC → WIF (expects repo or org secrets set below)
+      - name: Auth to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}   # e.g. projects/938446344277/locations/global/workloadIdentityPools/github-pool/providers/github
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}                 # e.g. gha-deployer@infinity-x-one-swarm-system.iam.gserviceaccount.com
+          token_format: 'access_token'
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '>= 485.0.0'
+
+      - name: Project context
+        run: |
+          gcloud config set project "${{ secrets.GCP_PROJECT_ID }}"
+          gcloud auth list
+          gcloud --quiet components install beta || true
+
+      # Example: build & push container(s). Replace with your real service(s).
+      - name: Build image
+        run: |
+          IMAGE="us-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/ai-neural-link/ai-gateway:$(git rev-parse --short HEAD)"
+          gcloud builds submit --tag "$IMAGE" .
+
+      # Example: deploy to Cloud Run (private)
+      - name: Deploy ai-gateway
+        run: |
+          IMAGE="us-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/ai-neural-link/ai-gateway:$(git rev-parse --short HEAD)"
+          gcloud run deploy ai-gateway \
+            --image "$IMAGE" \
+            --region us-east1 \
+            --platform managed \
+            --allow-unauthenticated=false \
+            --quiet
+
+      # Warm the service (scheduler should also hit /health in prod)
+      - name: Health check
+        run: |
+          echo "Deployed. Configure Cloud Scheduler to call /health with OIDC."
