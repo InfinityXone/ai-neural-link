@@ -1,0 +1,100 @@
+name: MAX: Cloud Run CI/CD
+
+on:
+  push:
+    branches: [ main, services/max-squad-bootstrap ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: infinity-x-one-swarm-system
+  REGION: us-east1
+  AR_REPO: services
+  IMAGE_PREFIX: us-east1-docker.pkg.dev/infinity-x-one-swarm-system/services
+  SERVICES: |
+    api-gateway
+    memory-gateway
+    injector
+    satellite-consumer
+    infinity-agent
+    autonomy-api
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Auth to Google via OIDC
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+
+      - name: Configure Docker Auth for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Build & Deploy (matrix-ish loop)
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r svc; do
+            [[ -z "$svc" ]] && continue
+            if [[ -f "$svc/Dockerfile" ]]; then
+              img="${IMAGE_PREFIX}/${svc}:${GITHUB_SHA}"
+              echo "::group::Build ${svc}"
+              docker build -t "$img" "$svc"
+              docker push "$img"
+              echo "::endgroup::"
+              echo "::group::Deploy ${svc}"
+              gcloud run deploy "$svc" \
+                --image="$img" \
+                --region="$REGION" \
+                --platform=managed \
+                --service-account="${{ secrets.GCP_RUNTIME_SA }}" \
+                --allow-unauthenticated \
+                --quiet
+              echo "::endgroup::"
+            else
+              echo "Skipping ${svc}: no Dockerfile at ${svc}/Dockerfile"
+            fi
+          done <<< "${SERVICES}"
+
+      - name: Create/Update warmers (Cloud Scheduler)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for svc in ${SERVICES}; do
+            url=$(gcloud run services describe "$svc" --region="$REGION" --format="value(status.url)" || true)
+            [[ -z "$url" ]] && continue
+            job="warm-${svc}"
+            if gcloud scheduler jobs describe "$job" --location="$REGION" >/dev/null 2>&1; then
+              gcloud scheduler jobs update http "$job" \
+                --location="$REGION" \
+                --schedule="*/5 * * * *" \
+                --uri="${url}/health" \
+                --oidc-service-account-email="${{ secrets.GCP_SCHEDULER_SA }}" \
+                --oidc-token-audience="${url}" \
+                --attempt-deadline=180s
+            else
+              gcloud scheduler jobs create http "$job" \
+                --location="$REGION" \
+                --schedule="*/5 * * * *" \
+                --uri="${url}/health" \
+                --oidc-service-account-email="${{ secrets.GCP_SCHEDULER_SA }}" \
+                --oidc-token-audience="${url}" \
+                --attempt-deadline=180s
+            fi
+            echo "Warmer set for ${svc}: ${url}/health"
+          done
