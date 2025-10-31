@@ -1,0 +1,25 @@
+name: triage-to-orchestrator
+on:
+  issues:
+    types: [opened, edited, labeled]
+  issue_comment:
+    types: [created]
+permissions:
+  id-token: write
+  contents: read
+  issues: read
+jobs:
+  forward:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Auth to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: gha-deployer@infinity-x-one-swarm-system.iam.gserviceaccount.com
+      - name: Send issue to orchestrator as a task
+        run: |
+          BODY=$(jq -r '.comment.body // .issue.body' <<< '${{ toJson(github.event) }}' | head -c 4000)
+          curl -fsS -H 'Content-Type: application/json' \
+            -d '{"actor":"gitops","goal":'"$BODY"',"constraints":{"source":"github-issue"},"budget":{"max_usd":0}}' \
+            https://orchestrator-938446344277.us-east1.run.app/route || true

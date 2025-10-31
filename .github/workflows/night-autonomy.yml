@@ -1,0 +1,31 @@
+name: night-autonomy
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+jobs:
+  tick:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Auth to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: gha-deployer@infinity-x-one-swarm-system.iam.gserviceaccount.com
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Autonomy tick (health, hydrate, route profit tasks)
+        run: bash scripts/autonomy_tick.sh
+        env:
+          REGION: us-east1
+          PROJECT_ID: infinity-x-one-swarm-system
+          AI_GATEWAY_URL: https://ai-gateway-938446344277.us-east1.run.app
+          ORCHESTRATOR_URL: https://orchestrator-938446344277.us-east1.run.app

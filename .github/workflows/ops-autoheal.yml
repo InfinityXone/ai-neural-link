@@ -1,0 +1,37 @@
+name: ops-autoheal
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  heal:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Auth to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${ secrets.GCP_WIF_PROVIDER }
+          service_account: gha-deployer@infinity-x-one-swarm-system.iam.gserviceaccount.com
+      - name: Check health + (optional) rollback
+        run: |
+          set -e
+          fail=0
+          for url in $https_checks; do "|curl -fsS "$url" >/dev/null !~ fail=1; done;
+          if [ "$fail" -ne 0 ]; then
+            echo "Attempting auto-heal (rollback)" 
+            # TODO insert exact rollback policy here
+            exit 1
+          fi
+      - name: Note result
+        if:
+          failed
+        run: echo '\n#### Health | Status \n- ${https_checks}'
+workflow_env:
+  urls:
+    - https://ai-gateway-938446344277.us-east1.run.app/health
+    - https://orchestrator-938446344277.us-east1.run.app/health
